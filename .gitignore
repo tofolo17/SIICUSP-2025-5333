@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDEs
+.idea/
+.vscode/
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Pastas fora do repositório público (mantidas apenas localmente)
+.claude/
+poster/
+presentation/
+relatorio/
+source/
+tests/
+
+# Markdown, READMEs e memórias do Claude (não publicar)
+*.md
+MEMORY.md
+memory/

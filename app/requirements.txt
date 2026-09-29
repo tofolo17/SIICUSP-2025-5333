@@ -1,0 +1,3 @@
+pygame>=2.1
+numpy>=1.23
+matplotlib>=3.5  # apenas para gerar o relatório PDF (botão de output)
