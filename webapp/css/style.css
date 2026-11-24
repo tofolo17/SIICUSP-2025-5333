@@ -76,8 +76,7 @@ body{
 
 /* mobile: painel vira bottom sheet */
 @media (max-width:819px){
-  #brand h1{font-size:18px}
-  #brand p{display:none}
+  #brand{display:none}
   .tbtn span{display:none}
   .tbtn{padding:10px}
   #hint{font-size:11px}
