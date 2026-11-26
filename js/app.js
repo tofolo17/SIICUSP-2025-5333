@@ -407,6 +407,62 @@
        <p>Tap to add a point, drag to move it, double-tap (or right-click) to remove it.
        Drag the background to pan, pinch or scroll to zoom, and press <span class="pill">Fit</span>
        to frame the data.</p>` },
+    { id: "script", label: "Script", html:
+      `<h3>Presentation script (English)</h3>
+       <p class="meta">A written version of the talk, so you can follow along in English while
+       the presenter speaks. It is organized by slide.</p>
+       <h3>1 · Title</h3>
+       <p>Good afternoon, everyone — how are you all doing? Before I start, please scan this QR
+       code to follow along with the talk. Feel free to do it now; if not, it is on every slide,
+       in the bottom-right corner. So: my name is Gustavo, a student at IME-USP, advised by
+       Professor Francisco Felipe, and I am going to share our research with you.</p>
+       <h3>2 · Four learning styles (VARK)</h3>
+       <p>First, I will introduce a model that classifies different learning styles: the VARK
+       model, created in 1992 by Professor Neil Fleming. Each letter is a style:</p>
+       <ul>
+         <li><b>Visual</b> — learns best through images, charts and mind maps;</li>
+         <li><b>Auditory</b>;</li>
+         <li><b>Read / Write</b>;</li>
+         <li><b>Kinesthetic</b> — learns best through practice, simulations and labs.</li>
+       </ul>
+       <p>These can happen at the same time (multimodal). One remark: what separates visual from
+       kinesthetic learning is <b>interactivity</b> — keep that keyword in mind. As an example,
+       think of GeoGebra: a plotted line is just an image, but if you can control its coefficients
+       with sliders, you have a simulation.</p>
+       <h3>3 · Hands-on wins</h3>
+       <p>To close this idea: there is an official pedagogical-research forum with a questionnaire
+       about VARK, and of its 400,000+ respondents, 90% include kinesthetic learning among their
+       top options.</p>
+       <h3>4 · Statistics &amp; regression at USP</h3>
+       <p>Now let us talk about USP. Through JupiterWeb you can look up the bachelor's programs
+       offered and, grouping tracks and shifts, we reach 133 programs (note: no grouping by
+       campus). Of these 133, 94 (71% of the total) include a basic-statistics course or
+       equivalent — by a good margin the most-taught discipline at the university. Of those 94,
+       74 (56% of the total) mention some kind of regression in their syllabus. And here we reach
+       the second keyword: <b>regression</b>.</p>
+       <h3>5 · Interactivity meets regression</h3>
+       <p>So, you already know the students' favourite learning method, and you also know the
+       most-offered discipline here. Now I ask: what if we could build an <b>interactive</b>
+       application that tackles topics in <b>regression</b>? That is what we are building, and it
+       is already in your hands — something close to a GeoGebra, but for statisticians.</p>
+       <h3>6–8 · Build points, fit a model</h3>
+       <p>At first we have an empty Cartesian plane and a few instructions at the bottom. Each
+       click creates a point, and you can interact with them — moving or deleting. With enough
+       clicks we fit a model, and any interaction with the points updates the fit automatically.</p>
+       <h3>9–10 · Many models, many parameters</h3>
+       <p>Among the supported models we have: linear, polynomial, B-splines and P-splines. You can
+       evaluate several models at once, and each one has parameters to try — for example knots,
+       degree, penalization, influential-point detection and basis visualization. Again, with every
+       change the fit updates on the spot. And if you would rather not keep generating points, you
+       can import your own dataset and work on top of it — so, beyond its teaching value, it can
+       also be used as a diagnostic tool.</p>
+       <h3>11 · What comes next</h3>
+       <p>Now to our short-term plans. The main one is to spread the word and encourage adoption —
+       I believe this moment is a good way to do that, since without feedback from real users it is
+       hard to tell whether we are on the right track. We also have more technical goals: today we
+       only have models with a single functional component, and we cannot yet combine them as in a
+       structured additive model; and we are looking at adding a geographic functional component,
+       which will require one more dimension in our visualizations. Thank you!</p>` },
     { id: "rls", label: "Line", html:
       `<h3>Line — simple linear regression</h3>
        <p>Fits the straight line <i>y = a + b x</i> that minimizes the squared residuals
@@ -463,12 +519,48 @@
     helpModal.querySelector("#help-close").addEventListener("click", closeHelp);
     helpModal.addEventListener("click", (e) => { if (e.target === helpModal) closeHelp(); });
   }
-  function openHelp() { if (helpModal) helpModal.hidden = false; }
+  function openHelp(tabId) {
+    if (!helpModal) return;
+    helpModal.hidden = false;
+    if (typeof tabId === "string") {
+      const b = helpModal.querySelector(`.help-tab[data-id="${tabId}"]`);
+      if (b) b.click();                 // ativa a aba pedida (ex.: "script")
+    }
+  }
   function closeHelp() { if (helpModal) helpModal.hidden = true; }
+
+  // ---------------- boas-vindas (aponta o script em inglês) ----------------
+  function buildWelcome() {
+    const m = document.createElement("div"); m.id = "welcome-modal";
+    m.innerHTML = `<div class="wel-card">
+        <h2>Welcome</h2>
+        <p>Are you an English speaker?</p>
+        <div class="wel-actions">
+          <button class="wel-btn primary" data-a="yes">Yes</button>
+          <button class="wel-btn" data-a="no">No</button>
+        </div></div>`;
+    document.body.appendChild(m);
+    const card = m.querySelector(".wel-card");
+    const close = () => { m.hidden = true; };
+    m.querySelector('[data-a="no"]').addEventListener("click", close);
+    m.querySelector('[data-a="yes"]').addEventListener("click", () => {
+      card.innerHTML = `<h2>Follow along in English</h2>
+        <p>During the talk, tap <b>Help</b> at the top of the screen and open the
+        <b>Script</b> tab. There you'll find an English version of what the presenter is
+        saying, slide by slide.</p>
+        <div class="wel-actions">
+          <button class="wel-btn primary" data-a="open">Open the script</button>
+          <button class="wel-btn" data-a="got">Got it</button>
+        </div>`;
+      card.querySelector('[data-a="got"]').addEventListener("click", close);
+      card.querySelector('[data-a="open"]').addEventListener("click", () => { close(); openHelp("script"); });
+    });
+    m.addEventListener("click", (e) => { if (e.target === m) close(); });
+  }
 
   // ---------------- barra e controles ----------------
   function wireToolbar() {
-    document.getElementById("btn-help").addEventListener("click", openHelp);
+    document.getElementById("btn-help").addEventListener("click", () => openHelp());
     document.getElementById("btn-fit").addEventListener("click", () => { fitView(); state.viewLocked = true; });
     document.getElementById("btn-pdf").addEventListener("click", exportPDF);
     document.getElementById("btn-clear").addEventListener("click", () => {
@@ -500,6 +592,7 @@
   seed();
   buildPanel();
   buildHelp();
+  buildWelcome();        // modal inicial que aponta o script em inglês
   wireToolbar();
   fitAll(); computeDiagnostics(); updateR2Badge();
   if (window.matchMedia("(min-width: 820px)").matches) togglePanel(true);
