@@ -35,6 +35,8 @@ versão desktop e acrescenta:
 - **R²** da RLS em tempo real, com farol (verde / amarelo / vermelho);
 - **detecção de pontos influentes** pela distância de Cook, e a RLS reajustada sem eles;
 - **exportação de PDF** e um botão de **ajuda** com explicações de cada modelo;
+- **dois idiomas**, português e inglês, com troca pelo seletor no topo;
+- uma **caixa de sugestões** que chega direto no e-mail do autor;
 - interface **responsiva**, pensada para o celular.
 
 Publicada no **GitHub Pages**; cada push na `main` republica automaticamente (via GitHub Actions). O código está em
@@ -56,7 +58,7 @@ Publicada no **GitHub Pages**; cada push na `main` republica automaticamente (vi
 └── webapp/            # versão web (HTML + Canvas + JS), publicada no GitHub Pages
     ├── index.html
     ├── css/style.css
-    └── js/            # linalg, models, plot, app
+    └── js/            # linalg, models, diagnostics, i18n, plot, app
 ```
 
 ### Ferramentas
@@ -119,6 +121,8 @@ version and adds:
 - **R²** for the line in real time, with a traffic light (green / yellow / red);
 - **influential-point detection** via Cook's distance, and the line refit without them;
 - **PDF export** and a **help** button explaining each model;
+- **two languages**, Portuguese and English, switchable from the top toolbar;
+- a **suggestion box** that reaches the author's inbox;
 - a **responsive**, mobile-first interface.
 
 Deployed on **GitHub Pages**; every push to `main` redeploys automatically (via GitHub Actions). The code lives in
@@ -140,7 +144,7 @@ Deployed on **GitHub Pages**; every push to `main` redeploys automatically (via 
 └── webapp/            # web version (HTML + Canvas + JS), deployed on GitHub Pages
     ├── index.html
     ├── css/style.css
-    └── js/            # linalg, models, plot, app
+    └── js/            # linalg, models, diagnostics, i18n, plot, app
 ```
 
 ### Tools
