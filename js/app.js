@@ -31,7 +31,7 @@
   const mname = (m) => RW.i18n.modelName(m.id) || m.name;
   const clabel = (a) => RW.i18n.ctrlLabel(a) || a;
   // chave do Web3Forms (cole a sua access key aqui para ativar a caixa de sugestões)
-  const WEB3FORMS_KEY = "PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE";
+  const WEB3FORMS_KEY = "c1d7f2d9-b5d1-4902-b23f-3c02e658fd28";
   function wireFeedback(container) {
     const mount = container.querySelector(".suggest-mount");
     if (!mount) return;
