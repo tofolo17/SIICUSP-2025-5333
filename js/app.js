@@ -25,6 +25,72 @@
     viewLocked: false,     // auto-enquadra até o usuário mexer na vista
   };
 
+  // ---------------- i18n (PT / EN) ----------------
+  // Dicionário e idioma vivem em js/i18n.js (RW.i18n). Aliases finos para uso local:
+  const tr = (k) => RW.i18n.t(k);
+  const mname = (m) => RW.i18n.modelName(m.id) || m.name;
+  const clabel = (a) => RW.i18n.ctrlLabel(a) || a;
+  // chave do Web3Forms (cole a sua access key aqui para ativar a caixa de sugestões)
+  const WEB3FORMS_KEY = "PASTE_YOUR_WEB3FORMS_ACCESS_KEY_HERE";
+  function wireFeedback(container) {
+    const mount = container.querySelector(".suggest-mount");
+    if (!mount) return;
+    mount.innerHTML = `<h3>${tr("fbTitle")}</h3>
+      <p>${tr("fbIntro")}</p>
+      <form class="suggest-form">
+        <textarea class="sg-msg" rows="4" placeholder="${tr("fbMsgPh")}"></textarea>
+        <input type="email" class="sg-email" placeholder="${tr("fbEmailPh")}">
+        <button type="submit" class="sg-send">${tr("fbSend")}</button>
+        <p class="sg-status" role="status"></p>
+      </form>`;
+    const form = mount.querySelector(".suggest-form");
+    const status = mount.querySelector(".sg-status");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = form.querySelector(".sg-msg").value.trim();
+      const email = form.querySelector(".sg-email").value.trim();
+      if (!msg) { status.textContent = tr("fbEmpty"); return; }
+      if (!WEB3FORMS_KEY || WEB3FORMS_KEY.indexOf("PASTE_") === 0) { status.textContent = tr("fbOff"); return; }
+      const btn = form.querySelector(".sg-send");
+      btn.disabled = true; status.textContent = tr("fbSending");
+      try {
+        const res = await fetch("https://api.web3forms.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            access_key: WEB3FORMS_KEY,
+            subject: "Regression Explorer — nova sugestão",
+            from_name: "Regression Explorer",
+            message: msg,
+            reply_to: email || "",
+          }),
+        });
+        const data = await res.json();
+        if (data.success) mount.innerHTML = `<h3>${tr("fbTitle")}</h3><p>${tr("fbThanks")}</p>`;
+        else { status.textContent = tr("fbErr"); btn.disabled = false; }
+      } catch (err) { status.textContent = tr("fbErr"); btn.disabled = false; }
+    });
+  }
+  function setBtnText(id, labelKey, titleKey) {
+    const b = document.getElementById(id); if (!b) return;
+    const s = b.querySelector("span"); if (s) s.textContent = tr(labelKey);
+    b.title = tr(titleKey);
+  }
+  function applyLang() {
+    document.documentElement.lang = RW.i18n.getLang();
+    const bsub = document.querySelector("#brand p"); if (bsub) bsub.textContent = tr("brandSub");
+    setBtnText("btn-help", "help", "t_help"); setBtnText("btn-fit", "fit", "t_fit");
+    setBtnText("btn-grid", "grid", "t_grid"); setBtnText("btn-csv", "csv", "t_csv");
+    setBtnText("btn-pdf", "pdf", "t_pdf"); setBtnText("btn-clear", "clear", "t_clear");
+    setBtnText("btn-panel", "models", "t_models");
+    const lb = document.getElementById("btn-lang");
+    if (lb) { const s = lb.querySelector("span"); if (s) s.textContent = tr("langShort"); lb.title = tr("t_lang"); }
+    const zi = document.getElementById("btn-zin"); if (zi) zi.title = tr("t_zin");
+    const zo = document.getElementById("btn-zout"); if (zo) zo.title = tr("t_zout");
+    const h = document.getElementById("hint"); if (h) h.textContent = tr("hint");
+    buildPanel(); buildHelp(); updateR2Badge(); requestRender();
+  }
+
   // ---------------- render loop ----------------
   let renderQueued = false;
   function requestRender() {
@@ -36,54 +102,8 @@
   function changeData() { fitAll(); computeDiagnostics(); updateR2Badge(); requestRender(); }
 
   // ---------------- diagnósticos (RLS) ----------------
-  function olsLine(pts) {
-    const n = pts.length; if (n < 2) return null;
-    let sx = 0, sy = 0, sxx = 0, sxy = 0;
-    for (const p of pts) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; }
-    const den = n * sxx - sx * sx;
-    if (Math.abs(den) < 1e-12) return null;
-    const b = (n * sxy - sx * sy) / den, a = (sy - b * sx) / n;
-    return { a, b };
-  }
-  function rSquared(pts, line) {
-    const n = pts.length; if (n < 2 || !line) return null;
-    let ybar = 0; for (const p of pts) ybar += p.y; ybar /= n;
-    let ssr = 0, sst = 0;
-    for (const p of pts) { const yh = line.a + line.b * p.x; ssr += (p.y - yh) ** 2; sst += (p.y - ybar) ** 2; }
-    if (sst <= 0) return 1;
-    return 1 - ssr / sst;
-  }
-  // distância de Cook (uma passada) para um conjunto de pontos
-  function cookOnce(pts) {
-    const n = pts.length; if (n < 3) return null;
-    const line = olsLine(pts); if (!line) return null;
-    let xbar = 0; for (const p of pts) xbar += p.x; xbar /= n;
-    let Sxx = 0; for (const p of pts) Sxx += (p.x - xbar) ** 2;
-    if (Sxx <= 0) return null;
-    let ssr = 0; const e = [];
-    for (const p of pts) { const r = p.y - (line.a + line.b * p.x); e.push(r); ssr += r * r; }
-    const s2 = ssr / (n - 2);
-    const thr = 4 / n, D = new Array(n);
-    for (let i = 0; i < n; i++) {
-      const h = 1 / n + ((pts[i].x - xbar) ** 2) / Sxx;
-      D[i] = (s2 > 1e-12 && h < 1) ? (e[i] * e[i]) / (2 * s2) * (h / ((1 - h) * (1 - h))) : 0;
-    }
-    return { D, thr };
-  }
-  // detecção sequencial: remove o ponto mais influente, reajusta e repete,
-  // desmascarando múltiplos influentes (threshold 4/n no conjunto corrente).
-  function cookRLS(pts) {
-    const n = pts.length; if (n < 3) return null;
-    const flags = new Array(n).fill(false);
-    let idx = pts.map((_, i) => i);
-    while (idx.length >= 3) {
-      const st = cookOnce(idx.map((i) => pts[i])); if (!st) break;
-      let mp = -1, md = 0;
-      for (let k = 0; k < st.D.length; k++) if (st.D[k] > md) { md = st.D[k]; mp = k; }
-      if (mp >= 0 && md > st.thr) { flags[idx[mp]] = true; idx.splice(mp, 1); } else break;
-    }
-    return { flags };
-  }
+  // Funções puras (reta MQ, R², Cook) vivem em js/diagnostics.js (RW.diag).
+  const olsLine = RW.diag.olsLine, rSquared = RW.diag.rSquared, cookRLS = RW.diag.cookRLS;
   function computeDiagnostics() {
     const line = models[0];
     state.r2 = (line.enabled && line.fitted)
@@ -283,7 +303,7 @@
   function buildControl(m, c) {
     const wrap = document.createElement("div"); wrap.className = "ctl";
     if (c.type === "toggle") {
-      wrap.innerHTML = `<label class="row"><span>${c.label}</span><input type="checkbox"></label>`;
+      wrap.innerHTML = `<label class="row"><span>${clabel(c.attr)}</span><input type="checkbox"></label>`;
       const cb = wrap.querySelector("input"); cb.checked = !!m.params[c.attr];
       cb.addEventListener("change", () => { m.params[c.attr] = cb.checked; requestRender(); });
       return wrap;
@@ -292,7 +312,7 @@
     const max = isValues ? c.values.length - 1 : c.max, min = isValues ? 0 : c.min;
     const cur = isValues ? Math.max(0, c.values.indexOf(m.params[c.attr])) : m.params[c.attr];
     const fmtVal = (v) => isValues ? fmtAlpha(c.values[v]) : String(v);
-    wrap.innerHTML = `<div class="row"><span>${c.label}</span><b class="val">${fmtVal(cur)}</b></div>
+    wrap.innerHTML = `<div class="row"><span>${clabel(c.attr)}</span><b class="val">${fmtVal(cur)}</b></div>
       <input type="range" min="${min}" max="${max}" step="1" value="${cur}">`;
     const rng = wrap.querySelector("input"), val = wrap.querySelector(".val");
     rng.addEventListener("input", () => {
@@ -302,24 +322,24 @@
     return wrap;
   }
   function buildPanel() {
-    panel.innerHTML = `<div class="panel-head"><h2>Models</h2><button id="panel-close" aria-label="Close">✕</button></div>`;
+    panel.innerHTML = `<div class="panel-head"><h2>${tr("panelTitle")}</h2><button id="panel-close" aria-label="${tr("close")}">✕</button></div>`;
     for (const m of models) {
       const card = document.createElement("div"); card.className = "model-card";
       card.innerHTML = `<label class="model-head"><span class="sw" style="background:${m.color}"></span>
-          <span class="mname">${m.name}</span><input type="checkbox" class="en" ${m.enabled ? "checked" : ""}></label>
+          <span class="mname">${mname(m)}</span><input type="checkbox" class="en" ${m.enabled ? "checked" : ""}></label>
         <div class="model-body"></div>`;
       const body = card.querySelector(".model-body"), en = card.querySelector(".en");
       const refresh = () => { body.hidden = !m.enabled; };
       en.addEventListener("change", () => { m.enabled = en.checked; refresh(); changeData(); });
       const clip = document.createElement("div"); clip.className = "ctl";
-      clip.innerHTML = `<label class="row"><span>Clip to data range</span><input type="checkbox" ${m.clipDomain ? "checked" : ""}></label>`;
+      clip.innerHTML = `<label class="row"><span>${tr("clip")}</span><input type="checkbox" ${m.clipDomain ? "checked" : ""}></label>`;
       clip.querySelector("input").addEventListener("change", (e) => { m.clipDomain = e.target.checked; requestRender(); });
       body.appendChild(clip);
       for (const c of m.controls) body.appendChild(buildControl(m, c));
       if (m.id === "rls") {
-        body.appendChild(diagToggle("Show R²", state.showR2, (v) => { state.showR2 = v; updateR2Badge(); }));
-        body.appendChild(diagToggle("Detect influential points (Cook)", state.cookOn, (v) => { state.cookOn = v; changeData(); }));
-        body.appendChild(diagToggle("Line without influential points", state.cookExclude, (v) => { state.cookExclude = v; changeData(); }));
+        body.appendChild(diagToggle(tr("showR2"), state.showR2, (v) => { state.showR2 = v; updateR2Badge(); }));
+        body.appendChild(diagToggle(tr("detectCook"), state.cookOn, (v) => { state.cookOn = v; changeData(); }));
+        body.appendChild(diagToggle(tr("lineNoInfl"), state.cookExclude, (v) => { state.cookExclude = v; changeData(); }));
       }
       refresh(); panel.appendChild(card);
     }
@@ -336,7 +356,7 @@
   function updateLegend() {
     const act = models.filter((m) => m.enabled);
     legend.innerHTML = act.map((m) =>
-      `<span class="lg"><i style="background:${m.color}"></i>${m.name}${m.enabled && !m.fitted ? " (n≥2)" : ""}</span>`).join("");
+      `<span class="lg"><i style="background:${m.color}"></i>${mname(m)}${m.enabled && !m.fitted ? tr("needN") : ""}</span>`).join("");
     legend.hidden = act.length === 0;
   }
 
@@ -349,14 +369,14 @@
       const x = parseFloat(parts[0]), y = parseFloat(parts[1]);
       if (isFinite(x) && isFinite(y)) pts.push({ x, y });
     }
-    if (pts.length < 2) { alert("CSV needs at least two numeric rows (x, y)."); return; }
+    if (pts.length < 2) { alert(tr("csvErr")); return; }
     state.points = pts; state.selected = -1; state.hintActive = false;
     fitAll(); computeDiagnostics(); updateR2Badge(); fitView();
   }
 
   // ---------------- PDF ----------------
   function exportPDF() {
-    if (!window.jspdf || !window.jspdf.jsPDF) { alert("PDF library did not load (check your connection)."); return; }
+    if (!window.jspdf || !window.jspdf.jsPDF) { alert(tr("pdfErr")); return; }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
@@ -371,150 +391,158 @@
     doc.addImage(img, "PNG", (pw - w) / 2, 78, w, h);
     let y = 78 + h + 26;
     doc.setTextColor(19, 26, 42); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text("Active models", 40, y); y += 16;
+    doc.text(tr("pdfActive"), 40, y); y += 16;
     doc.setFont("helvetica", "normal"); doc.setFontSize(10);
     for (const m of models) {
       if (!m.enabled) continue;
       const ps = Object.entries(m.params).filter(([, v]) => typeof v !== "boolean").map(([k, v]) => `${k}=${v}`);
-      let line = "• " + m.name + (ps.length ? ` (${ps.join(", ")})` : "");
+      let line = "• " + mname(m) + (ps.length ? ` (${ps.join(", ")})` : "");
       if (m.id === "rls" && state.r2 != null) line += `   R² = ${Math.max(0, state.r2).toFixed(3)}`;
       doc.text(line, 48, y); y += 14;
     }
     if (models[0].enabled && state.cook) {
       const k = state.cook.flags.filter(Boolean).length;
-      doc.text(`Influential points (Cook's distance > 4/n): ${k}`, 48, y); y += 14;
+      doc.text(tr("pdfInfl") + k, 48, y); y += 14;
     }
-    doc.text(`Points: ${state.points.length}`, 48, y);
+    doc.text(tr("pdfPoints") + state.points.length, 48, y);
     doc.save("regression-explorer.pdf");
   }
 
   // ---------------- ajuda ----------------
   let helpModal = null;
-  const HELP = [
-    { id: "general", label: "About", html:
-      `<h3>What this is</h3>
-       <p>Regression Explorer is an interactive tool to explore regression models in
-       real time. You place points and the fitted curves react at once, so the effect
-       of each choice becomes visible. The focus is pedagogical: to make visible what
-       usually stays only on paper.</p>
-       <h3>Credits</h3>
-       <p class="meta">Author: <b>Gustavo Valencio Tofolo</b><br>
-       Advisor: Prof. Dr. Francisco Felipe de Queiroz<br>
-       IME-USP — Institute of Mathematics and Statistics, University of São Paulo<br>
-       Supported by the <b>PUB scholarship</b> (USP Unified Scholarship Program), grant 2025-5333.</p>
-       <p><a href="https://github.com/tofolo17/SIICUSP-2025-5333" target="_blank" rel="noopener">github.com/tofolo17/SIICUSP-2025-5333</a></p>
-       <h3>How to use</h3>
-       <p>Tap to add a point, drag to move it, double-tap (or right-click) to remove it.
-       Drag the background to pan, pinch or scroll to zoom, and press <span class="pill">Fit</span>
-       to frame the data.</p>` },
-    { id: "script", label: "Script", html:
-      `<h3>Presentation script (English)</h3>
-       <p class="meta">A written version of the talk, so you can follow along in English while
-       the presenter speaks. It is organized by slide.</p>
-       <h3>1 · Title</h3>
-       <p>Good afternoon, everyone — how are you all doing? Before I start, please scan this QR
-       code to follow along with the talk. Feel free to do it now; if not, it is on every slide,
-       in the bottom-right corner. So: my name is Gustavo, a student at IME-USP, advised by
-       Professor Francisco Felipe, and I am going to share our research with you.</p>
-       <h3>2 · Four learning styles (VARK)</h3>
-       <p>First, I will introduce a model that classifies different learning styles: the VARK
-       model, created in 1992 by Professor Neil Fleming. Each letter is a style:</p>
-       <ul>
-         <li><b>Visual</b> — learns best through images, charts and mind maps;</li>
-         <li><b>Auditory</b>;</li>
-         <li><b>Read / Write</b>;</li>
-         <li><b>Kinesthetic</b> — learns best through practice, simulations and labs.</li>
-       </ul>
-       <p>These can happen at the same time (multimodal). One remark: what separates visual from
-       kinesthetic learning is <b>interactivity</b> — keep that keyword in mind. As an example,
-       think of GeoGebra: a plotted line is just an image, but if you can control its coefficients
-       with sliders, you have a simulation.</p>
-       <h3>3 · Hands-on wins</h3>
-       <p>To close this idea: there is an official pedagogical-research forum with a questionnaire
-       about VARK, and of its 400,000+ respondents, 90% include kinesthetic learning among their
-       top options.</p>
-       <h3>4 · Statistics &amp; regression at USP</h3>
-       <p>Now let us talk about USP. Through JupiterWeb you can look up the bachelor's programs
-       offered and, grouping tracks and shifts, we reach 133 programs (note: no grouping by
-       campus). Of these 133, 94 (71% of the total) include a basic-statistics course or
-       equivalent — by a good margin the most-taught discipline at the university. Of those 94,
-       74 (56% of the total) mention some kind of regression in their syllabus. And here we reach
-       the second keyword: <b>regression</b>.</p>
-       <h3>5 · Interactivity meets regression</h3>
-       <p>So, you already know the students' favourite learning method, and you also know the
-       most-offered discipline here. Now I ask: what if we could build an <b>interactive</b>
-       application that tackles topics in <b>regression</b>? That is what we are building, and it
-       is already in your hands — something close to a GeoGebra, but for statisticians.</p>
-       <h3>6–8 · Build points, fit a model</h3>
-       <p>At first we have an empty Cartesian plane and a few instructions at the bottom. Each
-       click creates a point, and you can interact with them — moving or deleting. With enough
-       clicks we fit a model, and any interaction with the points updates the fit automatically.</p>
-       <h3>9–10 · Many models, many parameters</h3>
-       <p>Among the supported models we have: linear, polynomial, B-splines and P-splines. You can
-       evaluate several models at once, and each one has parameters to try — for example knots,
-       degree, penalization, influential-point detection and basis visualization. Again, with every
-       change the fit updates on the spot. And if you would rather not keep generating points, you
-       can import your own dataset and work on top of it — so, beyond its teaching value, it can
-       also be used as a diagnostic tool.</p>
-       <h3>11 · What comes next</h3>
-       <p>Now to our short-term plans. The main one is to spread the word and encourage adoption —
-       I believe this moment is a good way to do that, since without feedback from real users it is
-       hard to tell whether we are on the right track. We also have more technical goals: today we
-       only have models with a single functional component, and we cannot yet combine them as in a
-       structured additive model; and we are looking at adding a geographic functional component,
-       which will require one more dimension in our visualizations. Thank you!</p>` },
-    { id: "rls", label: "Line", html:
-      `<h3>Line — simple linear regression</h3>
-       <p>Fits the straight line <i>y = a + b x</i> that minimizes the squared residuals
-       (ordinary least squares).</p>
-       <ul>
-         <li><b>R²</b>: share of the variance explained (0 to 1). The light is
-         green, yellow or red by quality.</li>
-         <li><b>Influential points (Cook's distance)</b>: points whose removal would
-         most change the line are flagged in red (threshold 4/n).</li>
-         <li><b>Line without influential points</b>: shows, dashed, the line refit after
-         dropping the red points, to compare.</li>
-       </ul>` },
-    { id: "poly", label: "Polynomial", html:
-      `<h3>Polynomial</h3>
-       <p>Fits a global polynomial of the chosen degree.</p>
-       <ul><li><b>Degree</b> (1–4): 1 is a straight line; higher degrees bend more,
-       but can oscillate near the edges.</li></ul>` },
-    { id: "bspline", label: "B-spline", html:
-      `<h3>B-spline</h3>
-       <p>A smooth curve built from local basis functions (Cox–de Boor). It is a sum
-       of bumps, each active only on a small region.</p>
-       <ul>
-         <li><b>Degree</b> (0–3): smoothness of each piece (3 = cubic).</li>
-         <li><b>Knots</b>: number of joints; more knots means more flexibility.</li>
-         <li><b>Show bases</b>: the individual basis functions, in a strip at the bottom.</li>
-         <li><b>Show contributions</b>: each basis scaled by its coefficient; they sum to the curve.</li>
-       </ul>` },
-    { id: "pspline", label: "P-spline", html:
-      `<h3>P-spline — penalized spline</h3>
-       <p>A B-spline with a roughness penalty, so you can use many knots without
-       overfitting.</p>
-       <ul>
-         <li><b>Degree</b> and <b>Knots</b>: as in the B-spline.</li>
-         <li><b>Penalty λ</b>: how strongly wiggliness is penalized; larger λ means
-         smoother, tending to a straight line.</li>
-         <li><b>Difference order r</b>: which differences of the coefficients are
-         penalized (r = 2 penalizes curvature).</li>
-       </ul>` },
-  ];
+  const HELP = {
+    en: [
+      { id: "general", label: "About", html:
+        `<h3>What this is</h3>
+         <p>Regression Explorer is an interactive tool to explore regression models in
+         real time. You place points and the fitted curves react at once, so the effect
+         of each choice becomes visible. The focus is pedagogical: to make visible what
+         usually stays only on paper.</p>
+         <h3>Credits</h3>
+         <p class="meta">Author: <b>Gustavo Valencio Tofolo</b><br>
+         Advisor: Prof. Dr. Francisco Felipe de Queiroz<br>
+         IME-USP — Institute of Mathematics and Statistics, University of São Paulo<br>
+         Supported by the <b>PUB scholarship</b> (USP Unified Scholarship Program), grant 2025-5333.</p>
+         <p><a href="https://github.com/tofolo17/SIICUSP-2025-5333" target="_blank" rel="noopener">github.com/tofolo17/SIICUSP-2025-5333</a></p>
+         <h3>How to use</h3>
+         <p>Tap to add a point, drag to move it, double-tap (or right-click) to remove it.
+         Drag the background to pan, pinch or scroll to zoom, and press <span class="pill">Fit</span>
+         to frame the data.</p>` },
+      { id: "feedback", label: "Feedback", html: `<div class="suggest-mount"></div>` },
+      { id: "rls", label: "Line", html:
+        `<h3>Line — simple linear regression</h3>
+         <p>Fits the straight line <i>y = a + b x</i> that minimizes the squared residuals
+         (ordinary least squares).</p>
+         <ul>
+           <li><b>R²</b>: share of the variance explained (0 to 1). The light is
+           green, yellow or red by quality.</li>
+           <li><b>Influential points (Cook's distance)</b>: points whose removal would
+           most change the line are flagged in red (threshold 4/n).</li>
+           <li><b>Line without influential points</b>: shows, dashed, the line refit after
+           dropping the red points, to compare.</li>
+         </ul>` },
+      { id: "poly", label: "Polynomial", html:
+        `<h3>Polynomial</h3>
+         <p>Fits a global polynomial of the chosen degree.</p>
+         <ul><li><b>Degree</b> (1–4): 1 is a straight line; higher degrees bend more,
+         but can oscillate near the edges.</li></ul>` },
+      { id: "bspline", label: "B-spline", html:
+        `<h3>B-spline</h3>
+         <p>A smooth curve built from local basis functions (Cox–de Boor). It is a sum
+         of bumps, each active only on a small region.</p>
+         <ul>
+           <li><b>Degree</b> (0–3): smoothness of each piece (3 = cubic).</li>
+           <li><b>Knots</b>: number of joints; more knots means more flexibility.</li>
+           <li><b>Show bases</b>: the individual basis functions, in a strip at the bottom.</li>
+           <li><b>Show contributions</b>: each basis scaled by its coefficient; they sum to the curve.</li>
+         </ul>` },
+      { id: "pspline", label: "P-spline", html:
+        `<h3>P-spline — penalized spline</h3>
+         <p>A B-spline with a roughness penalty, so you can use many knots without
+         overfitting.</p>
+         <ul>
+           <li><b>Degree</b> and <b>Knots</b>: as in the B-spline.</li>
+           <li><b>Penalty λ</b>: how strongly wiggliness is penalized; larger λ means
+           smoother, tending to a straight line.</li>
+           <li><b>Difference order r</b>: which differences of the coefficients are
+           penalized (r = 2 penalizes curvature).</li>
+         </ul>` },
+    ],
+    pt: [
+      { id: "general", label: "Sobre", html:
+        `<h3>O que é isto</h3>
+         <p>O Regression Explorer é uma ferramenta interativa para explorar modelos de
+         regressão em tempo real. Você coloca pontos e as curvas ajustadas reagem na hora,
+         tornando visível o efeito de cada escolha. O foco é pedagógico, mostrar o que
+         costuma ficar só no papel.</p>
+         <h3>Créditos</h3>
+         <p class="meta">Autor: <b>Gustavo Valencio Tofolo</b><br>
+         Orientador: Prof. Dr. Francisco Felipe de Queiroz<br>
+         IME-USP — Instituto de Matemática e Estatística da Universidade de São Paulo<br>
+         Apoio do <b>Programa Unificado de Bolsas (PUB)</b>, processo 2025-5333.</p>
+         <p><a href="https://github.com/tofolo17/SIICUSP-2025-5333" target="_blank" rel="noopener">github.com/tofolo17/SIICUSP-2025-5333</a></p>
+         <h3>Como usar</h3>
+         <p>Toque para adicionar um ponto, arraste para mover, toque duplo (ou botão direito)
+         para remover. Arraste o fundo para deslocar, pinça ou rolagem para zoom, e use
+         <span class="pill">Enquadrar</span> para enquadrar nos dados.</p>` },
+      { id: "feedback", label: "Sugestões", html: `<div class="suggest-mount"></div>` },
+      { id: "rls", label: "Reta", html:
+        `<h3>Reta — regressão linear simples</h3>
+         <p>Ajusta a reta <i>y = a + b x</i> que minimiza os resíduos ao quadrado
+         (mínimos quadrados ordinários).</p>
+         <ul>
+           <li><b>R²</b>: fração da variância explicada (0 a 1). O farol fica verde,
+           amarelo ou vermelho conforme a qualidade.</li>
+           <li><b>Pontos influentes (distância de Cook)</b>: os pontos cuja remoção mais
+           mudaria a reta ficam marcados em vermelho (limiar 4/n).</li>
+           <li><b>Reta sem os pontos influentes</b>: mostra, tracejada, a reta reajustada
+           sem os pontos vermelhos, para comparar.</li>
+         </ul>` },
+      { id: "poly", label: "Polinomial", html:
+        `<h3>Polinomial</h3>
+         <p>Ajusta um polinômio global do grau escolhido.</p>
+         <ul><li><b>Grau</b> (1 a 4): 1 é uma reta; graus maiores dobram mais, mas podem
+         oscilar perto das bordas.</li></ul>` },
+      { id: "bspline", label: "B-spline", html:
+        `<h3>B-spline</h3>
+         <p>Uma curva suave feita de funções base locais (Cox–de Boor). É uma soma de
+         corcovas, cada uma ativa só numa pequena região.</p>
+         <ul>
+           <li><b>Grau</b> (0 a 3): suavidade de cada pedaço (3 = cúbica).</li>
+           <li><b>Nós</b>: número de junções; mais nós significa mais flexibilidade.</li>
+           <li><b>Ver bases</b>: as funções base individuais, numa faixa embaixo.</li>
+           <li><b>Ver contribuições</b>: cada base multiplicada pelo seu coeficiente; elas
+           somam para formar a curva.</li>
+         </ul>` },
+      { id: "pspline", label: "P-spline", html:
+        `<h3>P-spline — spline penalizado</h3>
+         <p>Uma B-spline com uma penalização de rugosidade, para usar muitos nós sem
+         superajuste.</p>
+         <ul>
+           <li><b>Grau</b> e <b>Nós</b>: como na B-spline.</li>
+           <li><b>Penalização λ</b>: o quanto a oscilação é penalizada; λ maior deixa
+           mais suave, tendendo a uma reta.</li>
+           <li><b>Ordem da diferença r</b>: quais diferenças dos coeficientes são
+           penalizadas (r = 2 penaliza a curvatura).</li>
+         </ul>` },
+    ],
+  };
   function buildHelp() {
+    if (helpModal) helpModal.remove();
+    const tabs = HELP[RW.i18n.getLang()];
+    const tabsHtml = tabs.map((tab, i) => `<button class="help-tab${i === 0 ? " active" : ""}" data-id="${tab.id}">${tab.label}</button>`).join("");
     helpModal = document.createElement("div"); helpModal.id = "help-modal"; helpModal.hidden = true;
-    const tabs = HELP.map((t, i) => `<button class="help-tab${i === 0 ? " active" : ""}" data-id="${t.id}">${t.label}</button>`).join("");
     helpModal.innerHTML = `<div class="help-card">
-        <div class="help-head"><h2>Regression Explorer</h2><button id="help-close" aria-label="Close">✕</button></div>
-        <div class="help-tabs">${tabs}</div>
-        <div class="help-body">${HELP[0].html}</div></div>`;
+        <div class="help-head"><h2>Regression Explorer</h2><button id="help-close" aria-label="${tr('close')}">✕</button></div>
+        <div class="help-tabs">${tabsHtml}</div>
+        <div class="help-body">${tabs[0].html}</div></div>`;
     document.body.appendChild(helpModal);
     const body = helpModal.querySelector(".help-body");
     helpModal.querySelectorAll(".help-tab").forEach((b) => b.addEventListener("click", () => {
       helpModal.querySelectorAll(".help-tab").forEach((x) => x.classList.remove("active"));
       b.classList.add("active");
-      body.innerHTML = HELP.find((t) => t.id === b.dataset.id).html;
+      body.innerHTML = tabs.find((tab) => tab.id === b.dataset.id).html;
+      if (b.dataset.id === "feedback") wireFeedback(body);
     }));
     helpModal.querySelector("#help-close").addEventListener("click", closeHelp);
     helpModal.addEventListener("click", (e) => { if (e.target === helpModal) closeHelp(); });
@@ -529,38 +557,10 @@
   }
   function closeHelp() { if (helpModal) helpModal.hidden = true; }
 
-  // ---------------- boas-vindas (aponta o script em inglês) ----------------
-  function buildWelcome() {
-    const m = document.createElement("div"); m.id = "welcome-modal";
-    m.innerHTML = `<div class="wel-card">
-        <h2>Welcome</h2>
-        <p>Are you an English speaker?</p>
-        <div class="wel-actions">
-          <button class="wel-btn primary" data-a="yes">Yes</button>
-          <button class="wel-btn" data-a="no">No</button>
-        </div></div>`;
-    document.body.appendChild(m);
-    const card = m.querySelector(".wel-card");
-    const close = () => { m.hidden = true; };
-    m.querySelector('[data-a="no"]').addEventListener("click", close);
-    m.querySelector('[data-a="yes"]').addEventListener("click", () => {
-      card.innerHTML = `<h2>Follow along in English</h2>
-        <p>During the talk, tap <b>Help</b> at the top of the screen and open the
-        <b>Script</b> tab. There you'll find an English version of what the presenter is
-        saying, slide by slide.</p>
-        <div class="wel-actions">
-          <button class="wel-btn primary" data-a="open">Open the script</button>
-          <button class="wel-btn" data-a="got">Got it</button>
-        </div>`;
-      card.querySelector('[data-a="got"]').addEventListener("click", close);
-      card.querySelector('[data-a="open"]').addEventListener("click", () => { close(); openHelp("script"); });
-    });
-    m.addEventListener("click", (e) => { if (e.target === m) close(); });
-  }
-
   // ---------------- barra e controles ----------------
   function wireToolbar() {
     document.getElementById("btn-help").addEventListener("click", () => openHelp());
+    document.getElementById("btn-lang").addEventListener("click", () => { RW.i18n.toggle(); applyLang(); });
     document.getElementById("btn-fit").addEventListener("click", () => { fitView(); state.viewLocked = true; });
     document.getElementById("btn-pdf").addEventListener("click", exportPDF);
     document.getElementById("btn-clear").addEventListener("click", () => {
@@ -590,10 +590,8 @@
   }
 
   seed();
-  buildPanel();
-  buildHelp();
-  buildWelcome();        // modal inicial que aponta o script em inglês
   wireToolbar();
+  applyLang();           // monta painel + ajuda no idioma atual e traduz a barra
   fitAll(); computeDiagnostics(); updateR2Badge();
   if (window.matchMedia("(min-width: 820px)").matches) togglePanel(true);
 
